@@ -25,7 +25,6 @@ def tome2hyper(tome_files, hyper_file):
 
     with HyperProcess(telemetry=Telemetry.SEND_USAGE_DATA_TO_TABLEAU) as hyper:
 
-        # Creates new Hyper file "customer.hyper".
         # Replaces file with CreateMode.CREATE_AND_REPLACE if it already exists.
         with Connection(endpoint=hyper.endpoint,
                         database=path_to_database,
