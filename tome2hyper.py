@@ -11,13 +11,23 @@ from tableauhyperapi import HyperProcess, Telemetry, \
     TableName, \
     HyperException
 
-def tome2hyper(tome_files, hyper_file):
+def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
+    if use_names:
+        sample_col = 'sample_name'
+        gene_col = 'gene_name'
+        dtype = SqlType.text()
+    else:
+        sample_col = 'sample_index'
+        gene_col = 'gene_index'
+        dtype = SqlType.int()
+    
+    dtype = SqlType.text if use_names else SqlType.int
     extract_table = TableDefinition(
         name=TableName("Reads", "Extract"),
         columns=[
             TableDefinition.Column(name='num_reads', type=SqlType.int(), nullability=NOT_NULLABLE),
-            TableDefinition.Column(name='sample_name', type=SqlType.text(), nullability=NOT_NULLABLE),
-            TableDefinition.Column(name='gene_name', type=SqlType.text(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name=sample_col, type=dtype(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name=gene_col, type=dtype(), nullability=NOT_NULLABLE),
         ]
     )
     
@@ -41,13 +51,18 @@ def tome2hyper(tome_files, hyper_file):
                     all_samples = np.array(tio.sample_names)
                     all_genes = np.array(tio.gene_names)
 
-                    for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions='exon'):                    
+                    if use_names: 
+                        for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=regions):                    
 
-                        sample_names = all_samples[samples_index]
-                        gene_name = all_genes[gene_index]
+                            sample_names = all_samples[samples_index]
+                            gene_name = all_genes[gene_index]
 
-                        for i in range(len(num_reads)):
-                            inserter.add_row([int(num_reads[i]), sample_names[i], gene_name])
+                            for i in range(len(num_reads)):
+                                inserter.add_row([int(num_reads[i]), sample_names[i], gene_name])
+                    else:
+                        for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=regions):
+                            for i in range(len(num_reads)):
+                                inserter.add_row([int(num_reads[i]), samples_index[i], gene_index])
 
                 inserter.execute()
 
@@ -67,9 +82,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('hyper_file')
     parser.add_argument('tome_files', nargs='+')
+    parser.add_argument('--use_names', action='store_true')
+    parser.add_argument('--regions', default='exon')
     args = parser.parse_args()
     
-    tome2hyper(args.tome_files, args.hyper_file)
+    print(args)
+    tome2hyper(args.tome_files, args.hyper_file, args.regions, args.use_names)
     
 if __name__ == "__main__": main()
     
