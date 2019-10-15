@@ -11,7 +11,7 @@ from tableauhyperapi import HyperProcess, Telemetry, \
     TableName, \
     HyperException
 
-def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
+def tome2hyper(tome_files, hyper_file, regions, use_names):
     if use_names:
         sample_col = 'sample_name'
         gene_col = 'gene_name'
@@ -29,6 +29,7 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
             TableDefinition.Column(name=sample_col, type=dtype(), nullability=NOT_NULLABLE),
             TableDefinition.Column(name=gene_col, type=dtype(), nullability=NOT_NULLABLE),
             TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='region_index', type=SqlType.int(), nullability=NOT_NULLABLE),
         ]
     )    
 
@@ -58,6 +59,14 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
         ]
     )
 
+    regions_table = TableDefinition(
+        name=TableName("RNASeq", "GeneRegions"),
+        columns=[
+            TableDefinition.Column(name='region_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='region_name', type=SqlType.text(), nullability=NOT_NULLABLE)
+        ]
+    )
+
     path_to_database = Path(hyper_file)        
 
     with HyperProcess(telemetry=Telemetry.SEND_USAGE_DATA_TO_TABLEAU) as hyper:
@@ -72,6 +81,7 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
             connection.catalog.create_table(table_definition=tomes_table)
             connection.catalog.create_table(table_definition=samples_table)
             connection.catalog.create_table(table_definition=genes_table)
+            connection.catalog.create_table(table_definition=regions_table)
             
             with Inserter(connection, samples_table) as inserter:
                 for ti, tome_file in enumerate(tome_files):
@@ -94,6 +104,11 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
                     inserter.add_row([ti, tome_file])
                 inserter.execute()
 
+            with Inserter(connection, regions_table) as inserter:
+                for ri, region in enumerate(regions):
+                    inserter.add_row([ri, region])
+                inserter.execute()
+
             print("wrote tomes")            
             with Inserter(connection, reads_table) as inserter:
                 for tome_file in tome_files:
@@ -102,18 +117,20 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
                     all_samples = np.array(tio.sample_names)
                     all_genes = np.array(tio.gene_names)
 
-                    if use_names: 
-                        for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=regions):                    
+                    for ri, region in enumerate(regions):
+                        print(f"writing {tome_file}, {region}")
+                        if use_names: 
+                            for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=region):
 
-                            sample_names = all_samples[samples_index]
-                            gene_name = all_genes[gene_index]
+                                sample_names = all_samples[samples_index]
+                                gene_name = all_genes[gene_index]
 
-                            for i in range(len(num_reads)):
-                                inserter.add_row([int(num_reads[i]), sample_names[i], gene_name, ti])
-                    else:
-                        for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=regions):
-                            for i in range(len(num_reads)):
-                                inserter.add_row([int(num_reads[i]), samples_index[i], gene_index, ti])
+                                for i in range(len(num_reads)):
+                                    inserter.add_row([int(num_reads[i]), sample_names[i], gene_name, ti, ri])
+                        else:
+                            for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=region):
+                                for i in range(len(num_reads)):
+                                    inserter.add_row([int(num_reads[i]), samples_index[i], gene_index, ti, ri])
 
                 inserter.execute()
 
@@ -134,11 +151,11 @@ def main():
     parser.add_argument('hyper_file')
     parser.add_argument('tome_files', nargs='+')
     parser.add_argument('--use_names', action='store_true')
-    parser.add_argument('--regions', default='exon')
+    parser.add_argument('--regions', default='exon,intron')
     args = parser.parse_args()
     
     print(args)
-    tome2hyper(args.tome_files, args.hyper_file, args.regions, args.use_names)
+    tome2hyper(args.tome_files, args.hyper_file, args.regions.split(','), args.use_names)
     
 if __name__ == "__main__": main()
     
