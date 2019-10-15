@@ -52,8 +52,8 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
     genes_table = TableDefinition(
         name=TableName("RNASeq", "Genes"),
         columns=[
-            TableDefinition.Column(name='sample_index', type=SqlType.int(), nullability=NOT_NULLABLE),
-            TableDefinition.Column(name='sample_name', type=SqlType.text(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='gene_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='gene_name', type=SqlType.text(), nullability=NOT_NULLABLE),
             TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE)
         ]
     )
