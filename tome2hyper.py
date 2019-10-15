@@ -22,15 +22,42 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
         dtype = SqlType.int()
     
     dtype = SqlType.text if use_names else SqlType.int
-    extract_table = TableDefinition(
-        name=TableName("Reads", "Extract"),
+    reads_table = TableDefinition(
+        name=TableName("RNASeq", "Reads"),
         columns=[
             TableDefinition.Column(name='num_reads', type=SqlType.int(), nullability=NOT_NULLABLE),
             TableDefinition.Column(name=sample_col, type=dtype(), nullability=NOT_NULLABLE),
             TableDefinition.Column(name=gene_col, type=dtype(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+        ]
+    )    
+
+    tomes_table = TableDefinition(
+        name=TableName("RNASeq", "Tomes"),
+        columns=[
+            TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='tome_name', type=SqlType.text(), nullability=NOT_NULLABLE)
         ]
     )
-    
+
+    samples_table = TableDefinition(
+        name=TableName("RNASeq", "Samples"),
+        columns=[
+            TableDefinition.Column(name='sample_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='sample_name', type=SqlType.text(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE)
+        ]
+    )
+
+    genes_table = TableDefinition(
+        name=TableName("RNASeq", "Genes"),
+        columns=[
+            TableDefinition.Column(name='sample_index', type=SqlType.int(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='sample_name', type=SqlType.text(), nullability=NOT_NULLABLE),
+            TableDefinition.Column(name='tome_index', type=SqlType.int(), nullability=NOT_NULLABLE)
+        ]
+    )
+
     path_to_database = Path(hyper_file)        
 
     with HyperProcess(telemetry=Telemetry.SEND_USAGE_DATA_TO_TABLEAU) as hyper:
@@ -40,11 +67,35 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
                         database=path_to_database,
                         create_mode=CreateMode.CREATE_AND_REPLACE) as connection:
 
-            connection.catalog.create_schema(schema=extract_table.table_name.schema_name)
-            connection.catalog.create_table(table_definition=extract_table)
+            connection.catalog.create_schema(schema=reads_table.table_name.schema_name)
+            connection.catalog.create_table(table_definition=reads_table)
+            connection.catalog.create_table(table_definition=tomes_table)
+            connection.catalog.create_table(table_definition=samples_table)
+            connection.catalog.create_table(table_definition=genes_table)
+            
+            with Inserter(connection, samples_table) as inserter:
+                for ti, tome_file in enumerate(tome_files):
+                    tio = tomeio.TomeIO(tome_file)
 
-            # The rows to insert into the "Extract"."Extract" table.
-            with Inserter(connection, extract_table) as inserter:
+                    for si, sample_name in enumerate(tio.sample_names):
+                        inserter.add_row([si, sample_name, ti])
+                inserter.execute()
+
+            with Inserter(connection, genes_table) as inserter:
+                for ti, tome_file in enumerate(tome_files):
+                    tio = tomeio.TomeIO(tome_file)
+
+                    for gi, gene_name in enumerate(tio.gene_names):
+                        inserter.add_row([gi, gene_name, ti])
+                inserter.execute()
+
+            with Inserter(connection, tomes_table) as inserter:
+                for ti, tome_file in enumerate(tome_files):
+                    inserter.add_row([ti, tome_file])
+                inserter.execute()
+
+            print("wrote tomes")            
+            with Inserter(connection, reads_table) as inserter:
                 for tome_file in tome_files:
                     tio = tomeio.TomeIO(tome_file)
 
@@ -58,11 +109,11 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
                             gene_name = all_genes[gene_index]
 
                             for i in range(len(num_reads)):
-                                inserter.add_row([int(num_reads[i]), sample_names[i], gene_name])
+                                inserter.add_row([int(num_reads[i]), sample_names[i], gene_name, ti])
                     else:
                         for si, ei, samples_index, gene_index, num_reads in tio.iter_gene_data(regions=regions):
                             for i in range(len(num_reads)):
-                                inserter.add_row([int(num_reads[i]), samples_index[i], gene_index])
+                                inserter.add_row([int(num_reads[i]), samples_index[i], gene_index, ti])
 
                 inserter.execute()
 
@@ -72,8 +123,8 @@ def tome2hyper(tome_files, hyper_file, regions='exon', use_names=True):
 
             # Number of rows in the "Extract"."Extract" table.
             # `execute_scalar_query` is for executing a query that returns exactly one row with one column.
-            row_count = connection.execute_scalar_query(query=f"SELECT COUNT(*) FROM {extract_table.table_name}")
-            print(f"The number of rows in table {extract_table.table_name} is {row_count}.")
+            row_count = connection.execute_scalar_query(query=f"SELECT COUNT(*) FROM {reads_table.table_name}")
+            print(f"The number of rows in table {reads_table.table_name} is {row_count}.")
 
         print("The connection to the Hyper file has been closed.")
     print("The Hyper process has been shut down.")
