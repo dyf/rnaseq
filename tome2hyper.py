@@ -111,7 +111,7 @@ def tome2hyper(tome_files, hyper_file, regions, use_names):
 
             print("wrote tomes")            
             with Inserter(connection, reads_table) as inserter:
-                for tome_file in tome_files:
+                for ti,tome_file in enumerate(tome_files):
                     tio = tomeio.TomeIO(tome_file)
 
                     all_samples = np.array(tio.sample_names)
